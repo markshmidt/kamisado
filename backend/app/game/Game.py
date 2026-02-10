@@ -54,10 +54,17 @@ class Game:
         self.forced_color = self.board.tile_color(to_col, to_row)
 
         # win check (reach opponent baseline)
-        if piece.team == "white" and piece.row == 0:
-            self.winner = "white"
-        elif piece.team == "black" and piece.row == 7:
-            self.winner = "black"
+        if piece.direction == "down" and piece.row == 7:
+                self.winner = piece.team
+                return
+
+        if piece.direction == "up" and piece.row == 0:
+            self.winner = piece.team
+            return
 
         # swap turn
         self.turn = "black" if self.turn == "white" else "white"
+        
+        if self.winner:
+            raise ValueError("Game is already over")
+
