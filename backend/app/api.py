@@ -75,3 +75,8 @@ def get_valid_moves(piece_id: int):
         piece_id=piece_id,
         moves=[MovePositionDTO(col=c, row=r) for c, r in moves],
     )
+@app.post("/reset")
+def reset():
+    global game
+    game = Game.new()
+    return {"status": "ok"}

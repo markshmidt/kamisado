@@ -6,14 +6,33 @@ def setup_pieces(board: Board) -> None:
     board.pieces.clear() # clear the board of all pieces
     pid = 0 # piece id
 
-    # Black at row 0, direction down
-    for col, color in enumerate(Board.COLORS):
-        board.pieces.append(Piece(id=pid, col=col, row=0, 
-                                  color=color, # color of the piece is the color of the tile
-                                  team="black", direction="down"))
+    black_row = 0
+    for col in range(Board.WIDTH):
+        tile_color = board.tile_color(col, black_row)
+        board.pieces.append(
+            Piece(
+                id=pid,
+                col=col,
+                row=black_row,
+                color=tile_color,
+                team="black",
+                direction="down",
+            )
+        )
         pid += 1
 
-    # White at row 7, direction up
-    for col, color in enumerate(Board.COLORS):
-        board.pieces.append(Piece(id=pid, col=col, row=7, color=color, team="white", direction="up"))
+    # --- WHITE: bottom home row (row = 7), moves UP ---
+    white_row = Board.HEIGHT - 1
+    for col in range(Board.WIDTH):
+        tile_color = board.tile_color(col, white_row)
+        board.pieces.append(
+            Piece(
+                id=pid,
+                col=col,
+                row=white_row,
+                color=tile_color,
+                team="white",
+                direction="up",
+            )
+        )
         pid += 1
