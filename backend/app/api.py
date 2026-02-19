@@ -7,6 +7,7 @@ from app.game.Rules import Rules
 from app.schemas.game_state import GameStateDTO
 from app.schemas.move import MoveDTO, MovePositionDTO, ValidMovesDTO
 from app.schemas.piece import PieceDTO
+from app.game.ai import choose_best_move
 
 app = FastAPI()
 
@@ -75,6 +76,24 @@ def get_valid_moves(piece_id: int):
         piece_id=piece_id,
         moves=[MovePositionDTO(col=c, row=r) for c, r in moves],
     )
+
+@app.post("/ai-move", response_model=GameStateDTO)
+def ai_move():
+    global game
+
+    if game.winner:
+        return get_state()
+
+    ai_team = game.turn
+
+    move = choose_best_move(game, ai_team, depth=2)
+
+    if move:
+        game.apply_move(*move)
+
+    return get_state()
+
+
 @app.post("/reset")
 def reset():
     global game
