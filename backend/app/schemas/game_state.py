@@ -7,3 +7,4 @@ class GameStateDTO(BaseModel):
     forced_color: Optional[str]
     winner: Optional[str]
     pieces: List[PieceDTO]
+    last_player: Optional[str]

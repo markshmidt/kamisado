@@ -14,7 +14,7 @@ app = FastAPI()
 # CORS for React
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,6 +40,7 @@ def get_state():
             )
             for p in game.board.pieces
         ],
+        last_player=game.last_player,
     )
 
 
@@ -86,7 +87,7 @@ def ai_move():
 
     ai_team = game.turn
 
-    move = choose_best_move(game, ai_team, depth=2)
+    move = choose_best_move(game, ai_team, depth=4)
 
     if move:
         game.apply_move(*move)

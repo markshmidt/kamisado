@@ -14,6 +14,7 @@ class Game:
     turn: str = "white"
     forced_color: Optional[str] = None # the color of the tile that the piece must land on
     winner: Optional[str] = None
+    last_player: Optional[str] = None
 
     @staticmethod
     def new() -> "Game": # create a new game
@@ -49,6 +50,9 @@ class Game:
         # move
         piece.col = to_col
         piece.row = to_row
+        
+        # last player is the player who made the move
+        self.last_player = piece.team
 
         # forced color becomes the TILE color you landed on
         self.forced_color = self.board.tile_color(to_col, to_row)
@@ -64,6 +68,48 @@ class Game:
 
         # swap turn
         self.turn = "black" if self.turn == "white" else "white"
+        
+        # Special case: if the piece is forced to move but does not have any valid moves, it is considered as move with 
+        # zero mobility, so the opponent does a move again depending on the last player's piece color tile
+        forced_piece = None
+        for p in self.board.pieces:
+            if p.team == self.turn and p.color == self.forced_color:
+                forced_piece = p
+                break
+
+        if forced_piece:
+            forced_moves = Rules.valid_moves(forced_piece, self.board)
+
+            # If forced piece is blocked -> skip turn
+            if not forced_moves:
+
+                # Skip turn
+                self.turn = "black" if self.turn == "white" else "white"
+
+                # Forced color becomes color under blocked piece
+                self.forced_color = self.board.tile_color(
+                    forced_piece.col,
+                    forced_piece.row
+                )
+
+                # Deadlock case
+                # Now check if this forced piece also blocked
+                next_forced_piece = None
+                for p in self.board.pieces:
+                    if p.team == self.turn and p.color == self.forced_color:
+                        next_forced_piece = p
+                        break
+
+                if next_forced_piece:
+                    next_moves = Rules.valid_moves(next_forced_piece, self.board)
+
+                    if not next_moves:
+                        # DEADLOCK
+                        # Player who caused it (last_player) loses
+                        self.winner = (
+                            "black" if self.last_player == "white" else "white"
+                        )
+                        return
         
         if self.winner:
             raise ValueError("Game is already over")
