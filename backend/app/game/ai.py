@@ -58,212 +58,134 @@ def get_all_legal_moves(game: Game) -> List[Move]:
 def evaluate(game: Game, ai_team: str) -> float:
     """
     PURPOSE:
-      Convert a game state into a number:
-        - high number = good for ai_team
-        - low number = good for opponent
+        Convert a game state into a numerical score.
+        Positive score  = good for ai_team
+        Negative score  = good for opponent
 
-    RETURNS:
-      A float score.
-
-    KEY IDEA:
-      Minimax explores into the future, but it needs a scoring rule for leaf nodes.
+    FACTORS USED:
+        1) Terminal win/loss
+        2) Progress toward winning row
+        3) Center control
+        4) Color mobility (Kamisado-specific)
+        5) Forced color pressure 
     """
-    
-    score = 0
+
     opponent = "black" if ai_team == "white" else "white"
-    
+    score = 0.0
+
+   # 1) Terminal state (highest priority)
     if game.winner == ai_team:
-        return 1_000_000 
-    if game.winner and game.winner != ai_team:
-        return -1_000_000  
+        return 1_000_000
+    if game.winner == opponent:
+        return -1_000_000
     
-    
-    if game.forced_color:
-      # check if forced color piece is stuck / has little mobility
-      forced_piece = None
-      for p in game.board.pieces:
-          if p.team == game.turn and p.color == game.forced_color:
-              forced_piece = p
-              break
+    # Immediate 1-move win detection
+    for p in game.board.pieces:
+        if p.team == ai_team:
+            for col, row in Rules.valid_moves(p, game.board):
+                if (p.direction == "down" and row == 7) or \
+                (p.direction == "up" and row == 0):
+                    score += 300_000
 
-      if forced_piece:
-          forced_moves = Rules.valid_moves(forced_piece, game.board)
-          if len(forced_moves) <= 2:
-              if game.turn == opponent:
-                  score += 50
+        if p.team == opponent:
+            for col, row in Rules.valid_moves(p, game.board):
+                if (p.direction == "down" and row == 7) or \
+                (p.direction == "up" and row == 0):
+                    score -= 300_000
 
+   # 2) Progress toward winning row
+   # Each piece gets points for being closer to its goal row.
+   # This drives forward movement but is NOT dominant.
+    PROGRESS_WEIGHT = 6
 
     for p in game.board.pieces:
-        if p.direction == "down":
+        if p.direction == "down":      
             progress = p.row
-        else:
+        else:                       
             progress = 7 - p.row
 
-
+        if p.team == ai_team:
+            score += progress * PROGRESS_WEIGHT
+        else:
+            score -= progress * PROGRESS_WEIGHT
             
-    # tactical evaluation: check if the opponent has any moves that will win the game
-    if game.turn == opponent:
-        moves = get_all_legal_moves(game)
-        
-        # if len(moves) < 4:
-        #     score += (4 - len(moves)) * 20
-            
-        for move in moves:
-            g2 = copy.deepcopy(game)
-            g2.apply_move(*move)
-            if g2.winner == opponent:
-                score -= 500_000  # huge danger
-                break
-            g2_op = copy.deepcopy(g2)
-
-            if len(get_all_legal_moves(g2_op)) <= 2:
-                score += 25
-         
-    if game.turn == ai_team:
-        moves = get_all_legal_moves(game)
-        for move in moves:
-            g2 = copy.deepcopy(game)
-            g2.apply_move(*move)
-            if g2.winner == ai_team:
-                score += 500_000
-                
-                break
-              
-    # center bonus: give a bonus to pieces that are closer to the center of the board
+    ADVANCE_BONUS = 20
     for p in game.board.pieces:
-      center_bonus = 3 - abs(p.col - 3.5)
+        if p.team == ai_team:
+            if p.direction == "down" and p.row >= 5:
+                score += ADVANCE_BONUS * (p.row - 4)
+            if p.direction == "up" and p.row <= 2:
+                score += ADVANCE_BONUS * (3 - p.row)
 
-      if p.team == ai_team:
-          score += center_bonus * 2
-      else:
-          score -= center_bonus * 2
+        if p.team == opponent:
+            if p.direction == "down" and p.row >= 5:
+                score -= ADVANCE_BONUS * (p.row - 4)
+            if p.direction == "up" and p.row <= 2:
+                score -= ADVANCE_BONUS * (3 - p.row)
 
-    # AI mobility
-    g_ai = copy.deepcopy(game)
-    g_ai.turn = ai_team
-    ai_mobility = len(get_all_legal_moves(g_ai))
+   # 3) Center control
+   # Towers near the center have more diagonal options.
+    CENTER_WEIGHT = 2
 
-    # Opponent mobility
-    g_op = copy.deepcopy(game)
-    g_op.turn = opponent
-    opp_mobility = len(get_all_legal_moves(g_op))
+    for p in game.board.pieces:
+        center_bonus = 3.5 - abs(p.col - 3.5)  # max around center
 
-    score += (ai_mobility - opp_mobility) * 3
-    total_progress = sum(
-    p.row if p.direction == "down" else 7 - p.row
-    for p in game.board.pieces
-  )
-    #mobility
-    color_mobility = {}  # (team, color) → mobility count
+        if p.team == ai_team:
+            score += center_bonus * CENTER_WEIGHT
+        else:
+            score -= center_bonus * CENTER_WEIGHT
+
+   # 4) Color mobility map
+   # Landing tile color determines
+   # which tower opponent must move next.
+   # So mobility of each colored tower matters.
+    color_mobility = {}
 
     for p in game.board.pieces:
         mobility = len(Rules.valid_moves(p, game.board))
         color_mobility[(p.team, p.color)] = mobility
 
-        if total_progress < 20:
-            score += (ai_mobility - opp_mobility) * 5
-        else:
-            score += progress * 8
-    # -----------------------------------------
-# Forced color quality
-# -----------------------------------------
-    if game.forced_color:
+    # 5) Forced color pressure
+    # If forced_color exists, current player must move the tower of that color.
+    # Low mobility forced tower = positional pressure.
+    if game.forced_color is not None:
         forced_team = game.turn
-        forced_mobility = color_mobility.get(
-            (forced_team, game.forced_color), 0
-        )
+        forced_mob = color_mobility.get((forced_team, game.forced_color), 0)
 
-        if forced_team != ai_team:
-            # opponent forced into weak tower
-            if forced_mobility == 0:
-                score += 100
-            elif forced_mobility == 1:
-                score += 50
-            elif forced_mobility == 2:
-                score += 20
-            elif forced_mobility >= 5:
-                score -= 10  # we gave opponent flexibility
-
+        # If opponent is forced = good for us
+        # If we are forced = bad for us
+        if forced_team == opponent:
+            if forced_mob == 0:
+                score += 120  # skip turn likely 
+            elif forced_mob == 1:
+                score += 60
+            elif forced_mob == 2:
+                score += 25
         else:
-            # we are forced into weak tower
-            if forced_mobility == 0:
-                score -= 100
-            elif forced_mobility == 1:
-                score -= 50
-            elif forced_mobility == 2:
-                score -= 20
-            elif forced_mobility >= 5:
-                score += 10
-    # -----------------------------------------
-    # Opponent bad color pressure
-    # -----------------------------------------
-    opponent = "black" if ai_team == "white" else "white"
+            if forced_mob == 0:
+                score -= 120
+            elif forced_mob == 1:
+                score -= 60
+            elif forced_mob == 2:
+                score -= 25
+
+    # 6) Global color weakness
+    # Long-term pressure: if opponent has many nearly-blocked colored towers, future forced sequences become strong
+    BAD_ZERO_WEIGHT = 12
+    BAD_ONE_WEIGHT = 6
 
     for (team, color), mobility in color_mobility.items():
         if team == opponent:
             if mobility == 0:
-                score += 15
+                score += BAD_ZERO_WEIGHT
             elif mobility == 1:
-                score += 8
-    for (team, color), mobility in color_mobility.items():
-        if team == ai_team:
+                score += BAD_ONE_WEIGHT
+        else:
             if mobility == 0:
-                score -= 15
+                score -= BAD_ZERO_WEIGHT
             elif mobility == 1:
-                score -= 8
-            
-    if game.forced_color:
-      forced_piece = None
-      for p in game.board.pieces:
-          if p.team == game.turn and p.color == game.forced_color:
-              forced_piece = p
-              break
+                score -= BAD_ONE_WEIGHT
 
-      if forced_piece:
-          forced_moves = Rules.valid_moves(forced_piece, game.board)
-
-          mobility = len(forced_moves)
-
-          # If opponent's forced tower is weak → good
-          if game.turn != ai_team:
-              if mobility == 0:
-                  score += 80  # skip turn imminent
-              elif mobility == 1:
-                  score += 30  # almost blocked
-              elif mobility == 2:
-                  score += 10
-
-          # If OUR forced tower is weak → bad
-          else:
-              if mobility == 0:
-                  score -= 80
-              elif mobility == 1:
-                  score -= 30
-              elif mobility == 2:
-                  score -= 10
-    # If opponent forced piece is completely blocked
-    if game.forced_color:
-        forced_piece = None
-        for p in game.board.pieces:
-            if p.team == game.turn and p.color == game.forced_color:
-                forced_piece = p
-                break
-
-        if forced_piece:
-            forced_moves = Rules.valid_moves(forced_piece, game.board)
-
-            if not forced_moves and game.turn != ai_team:
-                score += 120  # double move opportunity
-                
-    total_opp_moves = 0
-    for p in game.board.pieces:
-        if p.team == opponent:
-            total_opp_moves += len(Rules.valid_moves(p, game.board))
-
-    if total_opp_moves <= 4:
-        score += 25
-
-          
     return score
 
 

@@ -87,7 +87,7 @@ def ai_move():
 
     ai_team = game.turn
 
-    move = choose_best_move(game, ai_team, depth=4)
+    move = choose_best_move(game, ai_team, depth=5)
 
     if move:
         game.apply_move(*move)
